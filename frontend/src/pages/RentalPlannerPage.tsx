@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Hub, Vehicle, RoutePlan, Rental } from '../types';
 import { api } from '../services/api';
+import { mockRentals } from '../services/mockData';
 import {
   Navigation,
   MapPin,
   Car,
-  Calendar,
   DollarSign,
   ArrowRight,
   ShieldCheck,
@@ -26,11 +26,11 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
   vehicles,
   onRefresh,
 }) => {
-  const [originHubId, setOriginHubId] = useState<string>(hubs[0]?.id || 'hub-sf-dntn');
-  const [destHubId, setDestHubId] = useState<string>(hubs[1]?.id || 'hub-sjc-apt');
+  const [originHubId, setOriginHubId] = useState<string>(hubs[0]?.id || 'hub-cbe-central');
+  const [destHubId, setDestHubId] = useState<string>(hubs[1]?.id || 'hub-blr-electronic');
   const [selectedVin, setSelectedVin] = useState<string>('');
-  const [customerName, setCustomerName] = useState('John Carter');
-  const [customerPhone, setCustomerPhone] = useState('+1-415-555-0921');
+  const [customerName, setCustomerName] = useState('Devendra Sharma');
+  const [customerPhone, setCustomerPhone] = useState('+91-98200-11223');
   const [durationDays, setDurationDays] = useState(2);
   const [insuranceTier, setInsuranceTier] = useState<'BASIC' | 'PREMIUM' | 'ENTERPRISE'>('PREMIUM');
 
@@ -39,7 +39,7 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState<string | null>(null);
 
-  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [rentals, setRentals] = useState<Rental[]>(mockRentals);
   const [activeTab, setActiveTab] = useState<'plan' | 'active'>('plan');
 
   // Load active rentals
@@ -55,6 +55,18 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
   useEffect(() => {
     loadRentals();
   }, []);
+
+  // Update origin/dest defaults when hubs prop updates
+  useEffect(() => {
+    if (hubs.length > 0) {
+      if (!originHubId || !hubs.some((h) => h.id === originHubId)) {
+        setOriginHubId(hubs[0].id);
+      }
+      if (!destHubId || !hubs.some((h) => h.id === destHubId)) {
+        setDestHubId(hubs[1]?.id || hubs[0].id);
+      }
+    }
+  }, [hubs]);
 
   // Compute Neo4j Shortest Route whenever origin or destination changes
   useEffect(() => {
@@ -73,17 +85,18 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
     }
   }, [originHubId, destHubId]);
 
-  // Filter available vehicles at the chosen origin hub
+  // Filter available vehicles at the chosen origin hub (or fallback to any available)
   const availableAtOrigin = vehicles.filter(
     (v) => v.status === 'AVAILABLE' && v.currentHubId === originHubId
   );
+  const vehiclesToPickFrom = availableAtOrigin.length > 0 ? availableAtOrigin : vehicles.filter((v) => v.status === 'AVAILABLE');
 
-  // Auto-select first available vehicle at hub if none selected
+  // Auto-select first available vehicle
   useEffect(() => {
-    if (availableAtOrigin.length > 0 && (!selectedVin || !availableAtOrigin.some((v) => v.vin === selectedVin))) {
-      setSelectedVin(availableAtOrigin[0].vin);
+    if (vehiclesToPickFrom.length > 0 && (!selectedVin || !vehiclesToPickFrom.some((v) => v.vin === selectedVin))) {
+      setSelectedVin(vehiclesToPickFrom[0].vin);
     }
-  }, [originHubId, vehicles]);
+  }, [originHubId, vehiclesToPickFrom]);
 
   const chosenVehicle = vehicles.find((v) => v.vin === selectedVin);
   const estimatedVehicleCost = chosenVehicle ? chosenVehicle.dailyRate * durationDays : 0;
@@ -105,12 +118,17 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
         insuranceTier,
       });
 
+      // Optimistically add to state and switch to active rentals tab
+      setRentals((prev) => [result.rental, ...prev.filter((r) => r.rentalId !== result.rental.rentalId)]);
+      setActiveTab('active');
       setBookingSuccess(
-        `Rental ${result.rental.rentalId} confirmed! Synchronized with MongoDB and Neo4j graph.`
+        `Rental ${result.rental.rentalId} confirmed! Created in MongoDB and mapped in Neo4j graph.`
       );
+
+      // Refresh background data
       loadRentals();
       onRefresh();
-      setTimeout(() => setBookingSuccess(null), 5000);
+      setTimeout(() => setBookingSuccess(null), 6000);
     } catch (err: any) {
       alert(`Booking failed: ${err.message}`);
     } finally {
@@ -122,6 +140,9 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
     if (!confirm('Confirm return and vehicle check-in?')) return;
     try {
       await api.completeRental(rentalId);
+      setRentals((prev) =>
+        prev.map((r) => (r.rentalId === rentalId ? { ...r, status: 'COMPLETED' } : r))
+      );
       loadRentals();
       onRefresh();
     } catch (err: any) {
@@ -132,38 +153,97 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
   const activeRentals = rentals.filter((r) => r.status === 'ACTIVE');
 
   return (
-    <div className="space-y-6">
-      {/* Tab Switcher: Plan Route vs Active Contracts */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', fontFamily: "'Inter', 'Outfit', sans-serif" }}>
+      {/* Header & Sub-Tab Switcher */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          paddingBottom: '1.1rem',
+          flexWrap: 'wrap',
+          gap: '1rem',
+        }}
+      >
         <div>
-          <h2 className="text-xl font-bold text-white m-0">Rental & Route Planner</h2>
-          <p className="text-xs text-slate-400 m-0">
-            Powered by <span className="text-blue-400 font-medium">Neo4j Cypher Pathfinding</span> &{' '}
-            <span className="text-emerald-400 font-medium">MongoDB Contract Store</span>
+          <h2
+            style={{
+              fontSize: '22px',
+              fontWeight: 700,
+              color: '#ffffff',
+              margin: 0,
+              fontFamily: "'Outfit', 'Inter', sans-serif",
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Rental & Route Planner
+          </h2>
+          <p
+            style={{
+              fontSize: '13px',
+              color: 'rgba(255, 255, 255, 0.5)',
+              margin: '3px 0 0',
+            }}
+          >
+            Dual-Write Polyglot Transactions: Neo4j Graph Pathfinding + MongoDB Rental Contracts
           </p>
         </div>
 
-        <div className="flex bg-slate-800 p-1 rounded-xl border border-slate-700">
+        {/* Tab Switcher */}
+        <div
+          style={{
+            display: 'flex',
+            background: '#111111',
+            padding: '4px',
+            borderRadius: '10px',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
           <button
             onClick={() => setActiveTab('plan')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'plan'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
+            style={{
+              padding: '7px 16px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: 'none',
+              background: activeTab === 'plan' ? '#ffffff' : 'transparent',
+              color: activeTab === 'plan' ? '#000000' : 'rgba(255, 255, 255, 0.65)',
+              transition: 'all 0.18s ease',
+            }}
           >
-            New Rental Booking
+            Plan & Book
           </button>
           <button
             onClick={() => setActiveTab('active')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
-              activeTab === 'active'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '7px 16px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: 'none',
+              background: activeTab === 'active' ? '#ffffff' : 'transparent',
+              color: activeTab === 'active' ? '#000000' : 'rgba(255, 255, 255, 0.65)',
+              transition: 'all 0.18s ease',
+            }}
           >
-            <span>Active Contracts</span>
-            <span className="px-1.5 py-0.5 rounded-full bg-slate-900 text-cyan-300 text-[10px]">
+            <span>Active Rentals</span>
+            <span
+              style={{
+                fontSize: '10px',
+                padding: '1px 7px',
+                borderRadius: '999px',
+                background: activeTab === 'active' ? '#000000' : 'rgba(255, 255, 255, 0.15)',
+                color: '#ffffff',
+                fontWeight: 700,
+              }}
+            >
               {activeRentals.length}
             </span>
           </button>
@@ -171,340 +251,656 @@ export const RentalPlannerPage: React.FC<RentalPlannerPageProps> = ({
       </div>
 
       {bookingSuccess && (
-        <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/50 flex items-center gap-3 text-emerald-300 text-sm">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        <div
+          style={{
+            background: 'rgba(34, 197, 94, 0.12)',
+            border: '1px solid rgba(34, 197, 94, 0.4)',
+            borderRadius: '10px',
+            padding: '1rem 1.25rem',
+            color: '#22c55e',
+            fontSize: '13px',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            boxShadow: '0 4px 16px rgba(34, 197, 94, 0.15)',
+          }}
+        >
+          <CheckCircle2 size={16} />
           <span>{bookingSuccess}</span>
         </div>
       )}
 
       {activeTab === 'plan' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Route Selector & Parameters */}
-          <div className="lg:col-span-6 space-y-5">
-            {/* Hub Selection Card */}
-            <div className="bg-slate-900/90 p-5 rounded-xl border border-slate-800 space-y-4">
-              <div className="flex items-center gap-2 text-cyan-400 text-xs font-semibold uppercase tracking-wider">
-                <Navigation className="w-4 h-4" /> 1. Select Pick-up & Return Hubs
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Origin Pick-up Hub
-                  </label>
-                  <select
-                    value={originHubId}
-                    onChange={(e) => setOriginHubId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500"
-                  >
-                    {hubs.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name} ({h.city})
-                      </option>
-                    ))}
-                  </select>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '1.5rem' }}>
+            {/* Left Column: Route Configuration & Vehicle Selection */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Origin & Destination Hub Selector */}
+              <div
+                style={{
+                  background: '#0a0a0a',
+                  border: '1px solid rgba(255, 255, 255, 0.09)',
+                  borderRadius: '14px',
+                  padding: '1.25rem',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    marginBottom: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Navigation size={13} style={{ color: '#ffffff' }} />
+                  <span>Select Transportation Hubs</span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Destination Drop-off Hub
-                  </label>
-                  <select
-                    value={destHubId}
-                    onChange={(e) => setDestHubId(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500"
-                  >
-                    {hubs.map((h) => (
-                      <option key={h.id} value={h.id}>
-                        {h.name} ({h.city})
-                      </option>
-                    ))}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  {/* Origin */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Origin Hub (Pick-Up)
+                    </label>
+                    <select
+                      value={originHubId}
+                      onChange={(e) => setOriginHubId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        background: '#141414',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '8px',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {hubs.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} ({h.city})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Destination */}
+                  <div>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '12px',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Destination Hub (Return)
+                    </label>
+                    <select
+                      value={destHubId}
+                      onChange={(e) => setDestHubId(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        background: '#141414',
+                        border: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderRadius: '8px',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {hubs.map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} ({h.city})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
 
-              {/* Neo4j Calculated Route Box */}
-              <div className="bg-slate-800/60 p-4 rounded-xl border border-slate-700/60 mt-4">
-                <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
-                  <span className="font-semibold text-blue-400 flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" /> Neo4j Shortest Path Traversal
-                  </span>
-                  {loadingRoute && <span className="text-cyan-400 animate-pulse">Calculating...</span>}
-                </div>
+                {/* Neo4j Route Preview Box */}
+                <div
+                  style={{
+                    marginTop: '1.2rem',
+                    padding: '1rem',
+                    background: '#121212',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '10px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        color: '#c9a84c',
+                      }}
+                    >
+                      Neo4j Shortest Path Calculation
+                    </span>
+                    {loadingRoute && (
+                      <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.45)' }}>Calculating...</span>
+                    )}
+                  </div>
 
-                {routePlan ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-700/40">
-                        <div className="text-[11px] text-slate-400">Distance</div>
-                        <div className="text-sm font-bold text-white">{routePlan.totalDistanceKm} km</div>
-                      </div>
-                      <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-700/40">
-                        <div className="text-[11px] text-slate-400">Est. Time</div>
-                        <div className="text-sm font-bold text-white">{routePlan.totalDurationMin} min</div>
-                      </div>
-                      <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-700/40">
-                        <div className="text-[11px] text-slate-400">Bridge Tolls</div>
-                        <div className="text-sm font-bold text-white">${routePlan.totalTollFee.toFixed(2)}</div>
-                      </div>
-                    </div>
-
-                    {/* Step-by-step Waypoint Nodes */}
+                  {routePlan ? (
                     <div>
-                      <div className="text-[11px] text-slate-400 mb-1.5 font-medium">
-                        Checkpoint Waypoints:
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', margin: '8px 0' }}>
+                        <div style={{ background: '#191919', padding: '8px', borderRadius: '7px' }}>
+                          <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.45)' }}>Distance</div>
+                          <div style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff' }}>
+                            {routePlan.totalDistanceKm} km
+                          </div>
+                        </div>
+                        <div style={{ background: '#191919', padding: '8px', borderRadius: '7px' }}>
+                          <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.45)' }}>Duration</div>
+                          <div style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff' }}>
+                            {Math.floor(routePlan.totalDurationMin / 60)}h {routePlan.totalDurationMin % 60}m
+                          </div>
+                        </div>
+                        <div style={{ background: '#191919', padding: '8px', borderRadius: '7px' }}>
+                          <div style={{ fontSize: '10px', color: 'rgba(255, 255, 255, 0.45)' }}>Bridge & Tolls</div>
+                          <div style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff' }}>
+                            ${routePlan.totalTollFee.toFixed(2)}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                        {routePlan.path.map((node, i) => (
-                          <React.Fragment key={node.id}>
-                            <span className="px-2 py-1 rounded bg-slate-900 text-slate-200 border border-slate-700 font-medium">
-                              {node.name}
-                            </span>
-                            {i < routePlan.path.length - 1 && (
-                              <ArrowRight className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </div>
+
+                      {routePlan.segments?.length > 0 && (
+                        <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.6)', marginTop: '6px' }}>
+                          Via: {routePlan.segments.map((s) => `${s.from} → ${s.to}`).join(' · ')}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-400 text-center py-2">
-                    Select origin and destination to calculate path.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Customer Details Card */}
-            <div className="bg-slate-900/90 p-5 rounded-xl border border-slate-800 space-y-4">
-              <div className="text-cyan-400 text-xs font-semibold uppercase tracking-wider">
-                2. Customer & Rental Specifications
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Customer Name
-                  </label>
-                  <input
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Phone Contact
-                  </label>
-                  <input
-                    type="text"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500"
-                  />
+                  ) : (
+                    <div style={{ fontSize: '12px', color: 'rgba(255, 255, 255, 0.45)' }}>
+                      Select origin and destination to compute optimal graph path
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Rental Duration (Days)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={durationDays}
-                    onChange={(e) => setDurationDays(parseInt(e.target.value) || 1)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Insurance Tier
-                  </label>
-                  <select
-                    value={insuranceTier}
-                    onChange={(e) => setInsuranceTier(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500"
+              {/* Vehicle Selection List */}
+              <div
+                style={{
+                  background: '#0a0a0a',
+                  border: '1px solid rgba(255, 255, 255, 0.09)',
+                  borderRadius: '14px',
+                  padding: '1.25rem',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: 'rgba(255, 255, 255, 0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
                   >
-                    <option value="BASIC">Basic ($0/day deductible $1000)</option>
-                    <option value="PREMIUM">Premium Full Coverage ($15/day)</option>
-                    <option value="ENTERPRISE">Enterprise Zero Liability ($30/day)</option>
-                  </select>
+                    <Car size={13} style={{ color: '#ffffff' }} />
+                    <span>Choose Available Vehicle ({vehiclesToPickFrom.length})</span>
+                  </div>
                 </div>
-              </div>
-            </div>
-          </div>
 
-          {/* Right Column: Vehicle Selection & Checkout */}
-          <div className="lg:col-span-6 space-y-5">
-            {/* Vehicle Selection at Selected Hub */}
-            <div className="bg-slate-900/90 p-5 rounded-xl border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-cyan-400 text-xs font-semibold uppercase tracking-wider">
-                  3. Select Vehicle at Pick-up Hub
-                </span>
-                <span className="text-xs text-slate-400">
-                  {availableAtOrigin.length} available at this station
-                </span>
-              </div>
-
-              {availableAtOrigin.length === 0 ? (
-                <div className="p-6 text-center text-xs text-amber-300 bg-amber-950/20 border border-amber-800/40 rounded-xl">
-                  No available vehicles at this hub right now. Please select another pick-up hub.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[290px] overflow-y-auto pr-1">
-                  {availableAtOrigin.map((v) => {
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  {vehiclesToPickFrom.map((v) => {
                     const isSelected = selectedVin === v.vin;
                     return (
                       <div
                         key={v.vin}
                         onClick={() => setSelectedVin(v.vin)}
-                        className={`p-3 rounded-xl border cursor-pointer transition flex items-center justify-between ${
-                          isSelected
-                            ? 'bg-cyan-950/40 border-cyan-500 ring-1 ring-cyan-500/50'
-                            : 'bg-slate-800/40 border-slate-700/60 hover:bg-slate-800'
-                        }`}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: '9px',
+                          border: isSelected ? '1px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.08)',
+                          background: isSelected ? '#1b1b1b' : '#121212',
+                          cursor: 'pointer',
+                          transition: 'all 0.18s ease',
+                        }}
                       >
-                        <div>
-                          <div className="font-semibold text-sm text-white">
-                            {v.year} {v.make} {v.model}
-                          </div>
-                          <div className="text-xs text-slate-400 font-mono">
-                            {v.licensePlate} · {v.type} · Battery: {v.batteryPct}%
-                          </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: '#ffffff' }}>
+                            {v.make} {v.model}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 700,
+                              color: '#ffffff',
+                              fontFamily: "'Outfit', 'Inter', sans-serif",
+                            }}
+                          >
+                            ${v.dailyRate}/d
+                          </span>
                         </div>
-
-                        <div className="text-right">
-                          <div className="text-sm font-bold text-cyan-400">${v.dailyRate}/day</div>
-                          <div className="text-[11px] text-slate-400">
-                            {isSelected ? '✓ Selected' : 'Click to select'}
-                          </div>
+                        <div
+                          style={{
+                            fontSize: '11px',
+                            color: 'rgba(255, 255, 255, 0.45)',
+                            marginTop: '4px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <span>{v.licensePlate} · {v.type}</span>
+                          <span>{v.type === 'ELECTRIC' ? `${v.batteryPct}% batt` : `${v.fuelPct}% fuel`}</span>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Price Breakdown & Instant Dual-Store Sync Button */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-5 rounded-xl border border-slate-800 space-y-4 shadow-xl">
-              <div className="font-semibold text-sm text-white flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-emerald-400" /> Contract & Pricing Summary
-              </div>
+            {/* Right Column: Customer Details & Booking Confirmation */}
+            <div
+              style={{
+                background: '#0a0a0a',
+                border: '1px solid rgba(255, 255, 255, 0.09)',
+                borderRadius: '14px',
+                padding: '1.25rem',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                height: 'fit-content',
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    marginBottom: '1.1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Sparkles size={13} style={{ color: '#c9a84c' }} />
+                  <span>Customer & Contract Specs</span>
+                </div>
 
-              <div className="space-y-2 text-xs border-b border-slate-800 pb-3">
-                <div className="flex justify-between text-slate-300">
-                  <span>
-                    Vehicle Rate (${chosenVehicle?.dailyRate || 0} × {durationDays} days):
-                  </span>
-                  <span className="font-mono text-white">${estimatedVehicleCost.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-slate-300">
-                  <span>Network Road & Bridge Tolls:</span>
-                  <span className="font-mono text-white">
-                    ${(routePlan?.totalTollFee || 0).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-slate-300">
-                  <span>Insurance Tier ({insuranceTier}):</span>
-                  <span className="font-mono text-white">Included</span>
-                </div>
-              </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '5px' }}>
+                      Customer Full Name
+                    </label>
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: '#141414',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
 
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-slate-400">Total Estimated Cost</div>
-                  <div className="text-2xl font-bold text-emerald-400">
-                    ${totalEstimatedCost.toFixed(2)}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '5px' }}>
+                      Contact Phone
+                    </label>
+                    <input
+                      type="text"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: '#141414',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '5px' }}>
+                        Duration (Days)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={durationDays}
+                        onChange={(e) => setDurationDays(Math.max(1, parseInt(e.target.value) || 1))}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          background: '#141414',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          fontSize: '13px',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '12px', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '5px' }}>
+                        Insurance Tier
+                      </label>
+                      <select
+                        value={insuranceTier}
+                        onChange={(e: any) => setInsuranceTier(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 10px',
+                          background: '#141414',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: '#ffffff',
+                          fontSize: '13px',
+                          outline: 'none',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <option value="BASIC">Basic ($0)</option>
+                        <option value="PREMIUM">Premium ($15/d)</option>
+                        <option value="ENTERPRISE">Enterprise ($30/d)</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  disabled={!chosenVehicle || bookingLoading}
-                  onClick={handleBookRental}
-                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-900/30 transition flex items-center gap-2 cursor-pointer"
+                {/* Price Breakdown */}
+                <div
+                  style={{
+                    marginTop: '1.5rem',
+                    padding: '1rem',
+                    background: '#111111',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
                 >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>{bookingLoading ? 'Processing...' : 'Confirm & Sync Booking'}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '6px' }}>
+                    <span>Vehicle Rate ({durationDays} days @ ${chosenVehicle?.dailyRate || 0}/d)</span>
+                    <span>${estimatedVehicleCost.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'rgba(255, 255, 255, 0.6)', marginBottom: '8px' }}>
+                    <span>Highway & Bridge Tolls</span>
+                    <span>${(routePlan?.totalTollFee || 0).toFixed(2)}</span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      paddingTop: '8px',
+                      borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+                    }}
+                  >
+                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#ffffff' }}>Estimated Total</span>
+                    <span
+                      style={{
+                        fontSize: '22px',
+                        fontWeight: 700,
+                        color: '#ffffff',
+                        fontFamily: "'Outfit', 'Inter', sans-serif",
+                      }}
+                    >
+                      ${totalEstimatedCost.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleBookRental}
+                disabled={bookingLoading || !chosenVehicle}
+                style={{
+                  marginTop: '1.5rem',
+                  width: '100%',
+                  padding: '12px',
+                  background: '#ffffff',
+                  color: '#000000',
+                  borderRadius: '9px',
+                  fontWeight: 700,
+                  fontSize: '13px',
+                  cursor: bookingLoading || !chosenVehicle ? 'not-allowed' : 'pointer',
+                  border: 'none',
+                  transition: 'all 0.18s ease',
+                }}
+                onMouseEnter={(e) => {
+                  if (!bookingLoading && chosenVehicle) {
+                    (e.currentTarget as HTMLElement).style.background = '#e5e5e5';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = '#ffffff';
+                }}
+              >
+                {bookingLoading ? 'Processing Transaction...' : 'Confirm & Create Rental (Dual Write)'}
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Active Rentals Section directly on Plan tab */}
+          {activeRentals.length > 0 && (
+            <div
+              style={{
+                marginTop: '1rem',
+                background: '#0a0a0a',
+                border: '1px solid rgba(255, 255, 255, 0.09)',
+                borderRadius: '14px',
+                padding: '1.25rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '1rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Clock size={14} style={{ color: '#f59e0b' }} />
+                  <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#ffffff' }}>
+                    Active Fleet Rentals ({activeRentals.length})
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveTab('active')}
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#ffffff',
+                    background: '#161616',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Manage All Active Rentals →
                 </button>
               </div>
 
-              <div className="text-[11px] text-slate-400 text-center">
-                Dual persistence: writes rental invoice to <strong>MongoDB</strong> & creates{' '}
-                <code>(Customer)-[:RENTED]-&gt;(Vehicle)</code> graph relationship in{' '}
-                <strong>Neo4j</strong>.
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '10px' }}>
+                {activeRentals.slice(0, 3).map((r) => (
+                  <div
+                    key={r.rentalId}
+                    style={{
+                      background: '#111111',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 700, color: '#ffffff' }}>{r.vehicleModel}</span>
+                      <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: 700 }}>${r.estimatedCost}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.5)' }}>
+                      {r.originHubName.split(' ')[0]} → {r.destinationHubName.split(' ')[0]} · {r.customerName}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
         </div>
       ) : (
-        /* Active Contracts View */
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activeRentals.map((r) => (
-              <div
-                key={r.rentalId}
-                className="bg-slate-900/90 rounded-xl border border-slate-800 p-5 space-y-4 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60">
-                      {r.rentalId}
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
-                      ACTIVE
-                    </span>
-                  </div>
-
-                  <h3 className="text-base font-bold text-white m-0">{r.vehicleModel}</h3>
-                  <div className="text-xs text-slate-400 font-mono">VIN: {r.vehicleVin}</div>
-
-                  <div className="mt-3 p-3 bg-slate-800/50 rounded-lg space-y-1.5 text-xs text-slate-300 border border-slate-700/50">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-400">Customer:</span>
-                      <span className="font-semibold text-white">{r.customerName}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-400">Route:</span>
-                      <span className="text-cyan-300">
-                        {r.originHubName} → {r.destinationHubName}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-400">Distance:</span>
-                      <span>{r.estimatedDistanceKm} km</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
+        /* Full Active Rentals Management Tab */
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {activeRentals.length === 0 ? (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '4rem 1rem',
+                background: '#0a0a0a',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '14px',
+                color: 'rgba(255, 255, 255, 0.45)',
+                fontSize: '14px',
+              }}
+            >
+              No active rental contracts currently in progress
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '1rem' }}>
+              {activeRentals.map((r) => (
+                <div
+                  key={r.rentalId}
+                  style={{
+                    background: '#0a0a0a',
+                    border: '1px solid rgba(255, 255, 255, 0.09)',
+                    borderRadius: '12px',
+                    padding: '1.25rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}
+                >
                   <div>
-                    <div className="text-[11px] text-slate-400">Total Price</div>
-                    <div className="text-base font-bold text-white">${r.estimatedCost}</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: 'rgba(245, 158, 11, 0.12)',
+                          color: '#f59e0b',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          fontWeight: 700,
+                        }}
+                      >
+                        ON RENT
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.45)' }}>{r.rentalId}</span>
+                    </div>
+
+                    <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', margin: '0 0 4px' }}>
+                      {r.vehicleModel}
+                    </h3>
+                    <div style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.5)', marginBottom: '12px' }}>
+                      Renter: {r.customerName} ({r.customerPhone})
+                    </div>
+
+                    <div
+                      style={{
+                        padding: '10px',
+                        background: '#121212',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Origin:</span>
+                        <span style={{ color: '#ffffff' }}>{r.originHubName}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Destination:</span>
+                        <span style={{ color: '#ffffff' }}>{r.destinationHubName}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>Total Cost:</span>
+                        <span style={{ color: '#ffffff', fontWeight: 700 }}>${r.estimatedCost}</span>
+                      </div>
+                    </div>
                   </div>
 
                   <button
                     onClick={() => handleCompleteRental(r.rentalId)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow cursor-pointer"
+                    style={{
+                      marginTop: '1.2rem',
+                      width: '100%',
+                      padding: '8px',
+                      background: '#161616',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      color: '#ffffff',
+                      borderRadius: '7px',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.18s ease',
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = '#ffffff';
+                      (e.currentTarget as HTMLElement).style.color = '#000000';
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = '#161616';
+                      (e.currentTarget as HTMLElement).style.color = '#ffffff';
+                    }}
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Return Vehicle</span>
+                    <RotateCcw size={13} />
+                    <span>Complete Rental & Return Vehicle</span>
                   </button>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {activeRentals.length === 0 && (
-            <div className="p-12 text-center bg-slate-900/60 rounded-xl border border-slate-800 text-slate-400">
-              No active rentals right now. Use the "New Rental Booking" tab to create one!
+              ))}
             </div>
           )}
         </div>

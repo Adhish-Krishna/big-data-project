@@ -52,7 +52,7 @@ export class Neo4jGraphService {
       OPTIONAL MATCH (v)-[:CURRENTLY_AT]->(h:Hub)
       RETURN v.vin AS vin, v.licensePlate AS licensePlate,
              v.type AS type, v.status AS status, h.id AS hubId
-      LIMIT $limit
+      LIMIT toInteger($limit)
     `, { limit: limitVehicles });
 
     // 4. Customers and recent active rentals

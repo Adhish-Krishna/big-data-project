@@ -4,7 +4,6 @@ import {
   MapPin,
   Share2,
   BarChart3,
-  Car,
   Play,
   Pause,
   RefreshCw,
@@ -23,6 +22,13 @@ interface NavbarProps {
   activeRentalsCount: number;
 }
 
+const tabs = [
+  { key: 'map' as const, icon: MapPin, label: 'Live Fleet', hasCount: true },
+  { key: 'rentals' as const, icon: Navigation, label: 'Route & Rentals', hasCount: true, countKey: 'rentals' },
+  { key: 'graph' as const, icon: Share2, label: 'Neo4j Graph', hasCount: false },
+  { key: 'analytics' as const, icon: BarChart3, label: 'Big Data Analytics', hasCount: false },
+];
+
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
@@ -33,131 +39,323 @@ export const Navbar: React.FC<NavbarProps> = ({
   vehicleCount,
   activeRentalsCount,
 }) => {
+  const isMongoConnected = health?.mongodb?.includes('CONNECTED') || health?.mongodb?.includes('SIMULATED');
+  const isNeo4jConnected = health?.neo4j?.includes('CONNECTED') || health?.neo4j?.includes('SIMULATED');
+
   return (
-    <header className="bg-slate-900/90 border-b border-slate-800 backdrop-blur sticky top-0 z-50 px-4 py-3">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-        {/* Brand & Project Info */}
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-gradient-to-tr from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/20 text-white">
-            <Car className="w-6 h-6" />
+    <header
+      style={{
+        background: '#070707',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        boxShadow: '0 4px 24px rgba(0, 0, 0, 0.8)',
+      }}
+    >
+      {/* Royal Subtle Gold & White Accent Top Line */}
+      <div
+        style={{
+          height: '2px',
+          background: 'linear-gradient(90deg, transparent 0%, rgba(201,168,76,0.3) 25%, #ffffff 50%, rgba(201,168,76,0.3) 75%, transparent 100%)',
+        }}
+      />
+
+      <div
+        style={{
+          maxWidth: '1360px',
+          margin: '0 auto',
+          padding: '0.85rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          flexWrap: 'nowrap',
+        }}
+      >
+        {/* ── Brand Area ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <img
+              src="/logo_og.png?v=2"
+              alt="SmartFleet Logo"
+              style={{
+                width: '78px',
+                height: '78px',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.25))',
+              }}
+            />
           </div>
+
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight text-white m-0">SmartFleet</h1>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-semibold">
-                Big Data IoT
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+              {/* Brand Header: Comfortaa, 22px, 700, -0.02em */}
+              <h1
+                style={{
+                  fontFamily: "'Comfortaa', 'Outfit', sans-serif",
+                  fontSize: '22px',
+                  fontWeight: 700,
+                  letterSpacing: '-0.02em',
+                  color: '#ffffff',
+                  margin: 0,
+                  lineHeight: 1.2,
+                }}
+              >
+                SmartFleet
+              </h1>
+
+              {/* <span
+                style={{
+                  fontSize: '10px',
+                  padding: '2px 8px',
+                  borderRadius: '999px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  color: '#ffffff',
+                  border: '1px solid rgba(255, 255, 255, 0.18)',
+                  fontWeight: 700,
+                  letterSpacing: '0.08em',
+                  fontFamily: "'Inter', 'Outfit', sans-serif",
+                }}
+              >
+                IoT INDIA
+              </span> */}
             </div>
-            <p className="text-xs text-slate-400 m-0">
-              Polyglot Persistence: <span className="text-emerald-400 font-medium">MongoDB</span> + <span className="text-blue-400 font-medium">Neo4j</span>
+
+            {/* Brand Tagline: Inter/Outfit, 11px, 600, 0.2em, UPPERCASE */}
+            <p
+              style={{
+                margin: '2px 0 0',
+                fontSize: '11px',
+                fontWeight: 600,
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                color: 'rgba(255, 255, 255, 0.45)',
+                fontFamily: "'Inter', 'Outfit', sans-serif",
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span>MongoDB</span>
+              <span style={{ color: 'rgba(201,168,76,0.6)' }}>·</span>
+              <span>Neo4j</span>
+              <span style={{ color: 'rgba(201,168,76,0.6)' }}>·</span>
+              <span>Polyglot Persistence</span>
             </p>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <nav className="flex items-center gap-1 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700/60 text-sm">
-          <button
-            onClick={() => setActiveTab('map')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium transition ${
-              activeTab === 'map'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
-            }`}
-          >
-            <MapPin className="w-4 h-4" />
-            <span>Live Fleet</span>
-            <span className="text-xs bg-black/30 px-1.5 py-0.5 rounded-full text-slate-200">
-              {vehicleCount}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('rentals')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium transition ${
-              activeTab === 'rentals'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
-            }`}
-          >
-            <Navigation className="w-4 h-4" />
-            <span>Route & Rentals</span>
-            {activeRentalsCount > 0 && (
-              <span className="text-xs bg-amber-500/30 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-semibold">
-                {activeRentalsCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('graph')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium transition ${
-              activeTab === 'graph'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
-            }`}
-          >
-            <Share2 className="w-4 h-4" />
-            <span>Neo4j Graph</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium transition ${
-              activeTab === 'analytics'
-                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-md'
-                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span>Big Data Analytics</span>
-          </button>
+        {/* ── Navigation Tabs ── */}
+        <nav
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            background: '#111111',
+            padding: '5px',
+            borderRadius: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+          }}
+        >
+          {tabs.map(({ key, icon: Icon, label }) => {
+            const isActive = activeTab === key;
+            const count = key === 'map' ? vehicleCount : key === 'rentals' ? activeRentalsCount : 0;
+            return (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  padding: '7px 15px',
+                  borderRadius: '9px',
+                  fontFamily: "'Inter', 'Outfit', sans-serif",
+                  fontWeight: isActive ? 600 : 500,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  border: isActive ? '1px solid #ffffff' : '1px solid transparent',
+                  background: isActive ? '#ffffff' : 'transparent',
+                  color: isActive ? '#000000' : 'rgba(255, 255, 255, 0.7)',
+                  boxShadow: isActive ? '0 2px 12px rgba(255, 255, 255, 0.15)' : 'none',
+                  transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(255, 255, 255, 0.07)';
+                    (e.currentTarget as HTMLElement).style.color = '#ffffff';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    (e.currentTarget as HTMLElement).style.color = 'rgba(255, 255, 255, 0.7)';
+                  }
+                }}
+              >
+                <Icon size={14} strokeWidth={isActive ? 2.2 : 1.8} />
+                <span>{label}</span>
+                {count > 0 && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      padding: '1px 6px',
+                      borderRadius: '999px',
+                      background: isActive ? '#000000' : 'rgba(255, 255, 255, 0.15)',
+                      color: isActive ? '#ffffff' : '#ffffff',
+                      fontWeight: 700,
+                      fontFamily: "'Inter', 'Outfit', sans-serif",
+                    }}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </nav>
 
-        {/* Database Badges & Simulation Control */}
-        <div className="flex items-center gap-3">
-          {/* DB Health */}
-          <div className="hidden lg:flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700">
-              <Database className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-slate-300">Mongo:</span>
+        {/* ── Right Controls (DB Status & IoT Simulation) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* DB Health Indicators */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* MongoDB */}
+            <div
+              title={health?.mongodb || 'MongoDB IoT Store'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 11px',
+                borderRadius: '8px',
+                background: '#121212',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                fontSize: '12px',
+                color: 'rgba(255, 255, 255, 0.75)',
+                fontFamily: "'Inter', 'Outfit', sans-serif",
+                fontWeight: 500,
+              }}
+            >
+              <Database size={13} style={{ color: '#ffffff' }} />
+              <span>Mongo</span>
               <span
-                className={`w-2 h-2 rounded-full ${
-                  health?.mongodb === 'CONNECTED' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
-                }`}
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: isMongoConnected ? '#22c55e' : '#ef4444',
+                  boxShadow: isMongoConnected ? '0 0 8px #22c55e' : 'none',
+                  display: 'inline-block',
+                }}
               />
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700">
-              <Layers className="w-3.5 h-3.5 text-blue-400" />
-              <span className="text-slate-300">Neo4j:</span>
+
+            {/* Neo4j */}
+            <div
+              title={health?.neo4j || 'Neo4j Graph Database'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 11px',
+                borderRadius: '8px',
+                background: '#121212',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                fontSize: '12px',
+                color: 'rgba(255, 255, 255, 0.75)',
+                fontFamily: "'Inter', 'Outfit', sans-serif",
+                fontWeight: 500,
+              }}
+            >
+              <Layers size={13} style={{ color: '#c9a84c' }} />
+              <span>Neo4j</span>
               <span
-                className={`w-2 h-2 rounded-full ${
-                  health?.neo4j === 'CONNECTED' ? 'bg-blue-400 animate-pulse' : 'bg-red-400'
-                }`}
+                style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: isNeo4jConnected ? '#22c55e' : '#ef4444',
+                  boxShadow: isNeo4jConnected ? '0 0 8px #22c55e' : 'none',
+                  display: 'inline-block',
+                }}
               />
             </div>
           </div>
 
-          {/* IoT Telemetry Simulation Toggle */}
-          <div className="flex items-center gap-1 bg-slate-800/90 p-1 rounded-lg border border-slate-700">
+          {/* IoT Simulation Toggle */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: '#121212',
+              padding: '4px',
+              borderRadius: '9px',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
             <button
               onClick={onToggleSimulation}
-              title={isSimulating ? 'Pause IoT Simulation' : 'Start IoT Simulation'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition ${
-                isSimulating
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-500'
-                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-              }`}
+              title={isSimulating ? 'Pause IoT Telemetry Stream' : 'Resume IoT Telemetry Stream'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '7px',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: isSimulating ? '1px solid rgba(255, 255, 255, 0.25)' : '1px solid rgba(255, 255, 255, 0.1)',
+                fontFamily: "'Inter', 'Outfit', sans-serif",
+                background: isSimulating ? '#1a1a1a' : '#0e0e0e',
+                color: '#ffffff',
+                transition: 'all 0.18s ease',
+              }}
             >
-              {isSimulating ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              <span>{isSimulating ? 'Sim Active' : 'Sim Paused'}</span>
+              {isSimulating ? <Pause size={12} /> : <Play size={12} />}
+              <span>{isSimulating ? 'Sim Live' : 'Paused'}</span>
+              {isSimulating && (
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#22c55e',
+                    boxShadow: '0 0 8px #22c55e',
+                    display: 'inline-block',
+                  }}
+                />
+              )}
             </button>
 
             <button
               onClick={onTickSimulation}
-              title="Step Single Simulation Tick"
-              className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition"
+              title="Manual Telemetry Simulation Tick"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: '28px',
+                height: '28px',
+                borderRadius: '7px',
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.6)',
+                cursor: 'pointer',
+                transition: 'all 0.18s ease',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.color = '#ffffff';
+                (e.currentTarget as HTMLElement).style.background = 'rgba(255, 255, 255, 0.1)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.color = 'rgba(255, 255, 255, 0.6)';
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
+              }}
             >
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw size={13} />
             </button>
           </div>
         </div>

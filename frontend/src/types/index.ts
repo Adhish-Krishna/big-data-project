@@ -20,6 +20,9 @@ export interface Vehicle {
   engineTempC: number;
   lastSeen: string;
   activeRentalId?: string | null;
+  tripProgress?: number;
+  routeOrigin?: string;
+  routeDestination?: string;
 }
 
 export interface TelemetryPoint {

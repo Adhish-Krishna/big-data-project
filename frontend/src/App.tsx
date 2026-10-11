@@ -129,7 +129,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div style={{ minHeight: '100vh', background: '#070707', color: '#ffffff', display: 'flex', flexDirection: 'column' }}>
       {/* Top Navbar */}
       <Navbar
         activeTab={activeTab}
@@ -143,7 +143,7 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+      <main style={{ flex: 1, maxWidth: '1360px', width: '100%', margin: '0 auto', padding: '1.25rem 1.5rem' }}>
         {activeTab === 'map' && (
           <FleetMapPage
             vehicles={vehicles}
